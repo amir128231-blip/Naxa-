@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Nexa</string>
+    <!-- Google Sign-In Web Client ID for Firebase Authentication -->
+    <string name="default_web_client_id" translatable="false">1088730706240-google-auth.apps.googleusercontent.com</string>
+</resources>

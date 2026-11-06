@@ -1,0 +1,7 @@
+{
+  "name": "Nexa",
+  "description": "پیام‌رسان Nexa با قابلیت چت خصوصی، گفتگو با مخاطبین، ارسال ویس و استیکر",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
