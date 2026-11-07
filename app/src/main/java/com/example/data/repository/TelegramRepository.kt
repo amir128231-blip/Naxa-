@@ -45,36 +45,49 @@ class TelegramRepository(
     }
 
     suspend fun initializeDefaultData() {
-        val existing = contactDao.getAllContacts().first()
-        val hasSaved = existing.any { it.id == "saved_messages" }
         val now = System.currentTimeMillis()
 
-        if (!hasSaved) {
-            val savedContact = ChatContact(
-                id = "saved_messages",
-                name = "پیام‌های ذخیره شده",
-                username = "@saved_messages",
-                bio = "فضای ابری شخصی شما برای نگهداری یادداشت‌ها و فایل‌ها",
-                avatarColorHex = 0xFF2481CC,
-                isOnline = true,
-                lastSeen = "همیشه آنلاین",
-                isGroup = false,
-                isSavedMessages = true,
-                unreadCount = 0,
-                lastMessageText = "به فضای ابری نکسا خوش آمدید ☁️",
-                lastMessageTime = now,
-                lastMessageIsOutgoing = true,
-                lastMessageStatus = MessageStatus.READ.name,
-                isPinned = true
-            )
-            contactDao.insertOrUpdateContact(savedContact)
+        // Clean up all sample/demo contacts so ONLY Nexa Saved Messages remains
+        val demoContactIds = listOf(
+            "contact_sara",
+            "contact_ali",
+            "contact_maryam",
+            "group_dorehami",
+            "bot_support"
+        )
+        for (demoId in demoContactIds) {
+            contactDao.deleteContact(demoId)
+            messageDao.clearChatHistory(demoId)
+        }
 
+        // Initialize or update Nexa Cloud Storage (Saved Messages) as the exclusive default chat
+        val savedContact = ChatContact(
+            id = "saved_messages",
+            name = "پیام‌های ذخیره شده نکسا ☁️",
+            username = "@saved_messages",
+            bio = "فضای ابری شخصی نکسا برای نگهداری یادداشت‌ها، ویس و فایل‌ها",
+            avatarColorHex = 0xFF2481CC,
+            isOnline = true,
+            lastSeen = "فضای ابری متصل",
+            isGroup = false,
+            isSavedMessages = true,
+            unreadCount = 0,
+            lastMessageText = "به فضای ذخیره‌سازی نکسا خوش آمدید ☁️",
+            lastMessageTime = now,
+            lastMessageIsOutgoing = true,
+            lastMessageStatus = MessageStatus.READ.name,
+            isPinned = true
+        )
+        contactDao.insertOrUpdateContact(savedContact)
+
+        val existingMessages = messageDao.getLatestMessage("saved_messages")
+        if (existingMessages == null) {
             val defaultMessages = listOf(
                 ChatMessage(
                     chatId = "saved_messages",
                     senderId = "saved_messages",
                     senderName = "Nexa Cloud",
-                    text = "به فضای ابری نکسا خوش آمدید! می‌توانید پیام‌ها، لینک‌ها و یادداشت‌های خود را اینجا ذخیره کنید.",
+                    text = "به فضای ابری و پیام‌های ذخیره‌شده نکسا خوش آمدید! ☁️✨\n\nدقیقاً مانند فضای ابری تلگرام، می‌توانید هر متن، ویس صوتی، عکس، استیکر و یادداشتی را اینجا بفرستید تا برای همیشه در فضای شخصی شما محفوظ و در دسترس بماند.",
                     timestamp = now,
                     isOutgoing = true,
                     status = MessageStatus.READ.name,
@@ -82,137 +95,6 @@ class TelegramRepository(
                 )
             )
             messageDao.insertMessages(defaultMessages)
-        }
-
-        // Initialize Support Bot
-        ensureSupportBotContact()
-
-        // Initialize default contacts with realistic online/offline states if absent
-        if (existing.none { it.id == "contact_sara" }) {
-            val saraContact = ChatContact(
-                id = "contact_sara",
-                name = "سارا علوی",
-                username = "@sara_alavi",
-                phone = "+98 912 345 6789",
-                bio = "طراح رابط کاربری و توسعه‌دهنده • همیشه آنلاین 🌸",
-                avatarColorHex = 0xFFE91E63,
-                isOnline = true,
-                lastSeen = "آنلاین",
-                isGroup = false,
-                unreadCount = 1,
-                lastMessageText = "سلام! چطوری؟ وضعیت پروژه چطوره؟ 😊",
-                lastMessageTime = now - 1000 * 60 * 5,
-                lastMessageIsOutgoing = false,
-                lastMessageStatus = MessageStatus.READ.name
-            )
-            contactDao.insertOrUpdateContact(saraContact)
-            messageDao.insertMessage(
-                ChatMessage(
-                    chatId = "contact_sara",
-                    senderId = "contact_sara",
-                    senderName = "سارا علوی",
-                    text = "سلام! چطوری؟ وضعیت پروژه چطوره؟ 😊",
-                    timestamp = now - 1000 * 60 * 5,
-                    isOutgoing = false,
-                    status = MessageStatus.SENT.name,
-                    messageType = MessageType.TEXT.name
-                )
-            )
-        }
-
-        if (existing.none { it.id == "contact_ali" }) {
-            val aliContact = ChatContact(
-                id = "contact_ali",
-                name = "علی محمدی",
-                username = "@ali_m",
-                phone = "+98 935 987 6543",
-                bio = "علاقه‌مند به تکنولوژی و کدنویسی اندروید 💻",
-                avatarColorHex = 0xFF2AABEE,
-                isOnline = false,
-                lastSeen = "آخرین بازدید ۱۰ دقیقه پیش",
-                isGroup = false,
-                unreadCount = 0,
-                lastMessageText = "فردا ساعت ۵ عصر می‌بینمت رفیق 👍",
-                lastMessageTime = now - 1000 * 60 * 45,
-                lastMessageIsOutgoing = false,
-                lastMessageStatus = MessageStatus.READ.name
-            )
-            contactDao.insertOrUpdateContact(aliContact)
-            messageDao.insertMessage(
-                ChatMessage(
-                    chatId = "contact_ali",
-                    senderId = "contact_ali",
-                    senderName = "علی محمدی",
-                    text = "فردا ساعت ۵ عصر می‌بینمت رفیق 👍",
-                    timestamp = now - 1000 * 60 * 45,
-                    isOutgoing = false,
-                    status = MessageStatus.READ.name,
-                    messageType = MessageType.TEXT.name
-                )
-            )
-        }
-
-        if (existing.none { it.id == "contact_maryam" }) {
-            val maryamContact = ChatContact(
-                id = "contact_maryam",
-                name = "مریم حسینی",
-                username = "@maryam_h",
-                phone = "+98 919 111 2233",
-                bio = "مدیر محصول و برنامه‌ریز پروژه‌ها 📊",
-                avatarColorHex = 0xFF9C27B0,
-                isOnline = false,
-                lastSeen = "آخرین بازدید دیروز",
-                isGroup = false,
-                unreadCount = 0,
-                lastMessageText = "فایل‌ها رو فرستادم، بررسی کردی بگو 📁",
-                lastMessageTime = now - 1000 * 60 * 60 * 24,
-                lastMessageIsOutgoing = false,
-                lastMessageStatus = MessageStatus.READ.name
-            )
-            contactDao.insertOrUpdateContact(maryamContact)
-            messageDao.insertMessage(
-                ChatMessage(
-                    chatId = "contact_maryam",
-                    senderId = "contact_maryam",
-                    senderName = "مریم حسینی",
-                    text = "فایل‌ها رو فرستادم، بررسی کردی بگو 📁",
-                    timestamp = now - 1000 * 60 * 60 * 24,
-                    isOutgoing = false,
-                    status = MessageStatus.READ.name,
-                    messageType = MessageType.TEXT.name
-                )
-            )
-        }
-
-        if (existing.none { it.id == "group_dorehami" }) {
-            val groupContact = ChatContact(
-                id = "group_dorehami",
-                name = "گروه دوستانه نکسا 🎉",
-                username = "@group_dorehami",
-                bio = "گروه دوستان صمیمی برای هماهنگی برنامه‌ها و گپ‌وگفت",
-                avatarColorHex = 0xFFFF9800,
-                isOnline = true,
-                lastSeen = "۴ عضو، ۲ آنلاین",
-                isGroup = true,
-                unreadCount = 0,
-                lastMessageText = "سارا: بچه‌ها آخر هفته برنامه کافه چیه؟",
-                lastMessageTime = now - 1000 * 60 * 15,
-                lastMessageIsOutgoing = false,
-                lastMessageStatus = MessageStatus.READ.name
-            )
-            contactDao.insertOrUpdateContact(groupContact)
-            messageDao.insertMessage(
-                ChatMessage(
-                    chatId = "group_dorehami",
-                    senderId = "member_sara",
-                    senderName = "سارا علوی",
-                    text = "بچه‌ها آخر هفته برنامه کافه چیه؟",
-                    timestamp = now - 1000 * 60 * 15,
-                    isOutgoing = false,
-                    status = MessageStatus.READ.name,
-                    messageType = MessageType.TEXT.name
-                )
-            )
         }
     }
 
