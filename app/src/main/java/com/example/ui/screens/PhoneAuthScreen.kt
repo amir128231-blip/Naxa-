@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -209,6 +210,7 @@ fun PhoneAuthScreen(
 
     var selectedCountry by remember { mutableStateOf(supportedCountries[0]) }
     var phoneNumber by remember { mutableStateOf("") }
+    var phoneValidationError by remember { mutableStateOf<String?>(null) }
     var syncContactsChecked by remember { mutableStateOf(true) }
     var showCountryDialog by remember { mutableStateOf(false) }
 
@@ -223,6 +225,12 @@ fun PhoneAuthScreen(
     ) { _ -> }
 
     LaunchedEffect(Unit) {
+        // Auto-fill SMS code when real SMS is received on the SIM card
+        com.example.data.auth.SmsReceiver.onCodeReceivedListener = { receivedCode ->
+            smsCode = receivedCode
+            onVerifyCode(receivedCode)
+        }
+
         val permissions = mutableListOf<String>()
         permissions.add(Manifest.permission.SEND_SMS)
         permissions.add(Manifest.permission.RECEIVE_SMS)
@@ -232,6 +240,36 @@ fun PhoneAuthScreen(
         try {
             permissionLauncher.launch(permissions.toTypedArray())
         } catch (_: Throwable) {}
+    }
+
+    fun validateAndSendPhone() {
+        val cleanDigits = phoneNumber.trim().replace(" ", "").removePrefix("+98").removePrefix("98")
+        val isValid = if (selectedCountry.dialCode == "+98") {
+            (cleanDigits.startsWith("09") && cleanDigits.length == 11) ||
+            (cleanDigits.startsWith("9") && cleanDigits.length == 10)
+        } else {
+            cleanDigits.length >= 7
+        }
+
+        if (!isValid) {
+            phoneValidationError = "شماره وارد شده نامعتبر است! شماره همراه باید ۱۱ رقم بوده و با ۰۹ شروع شود (مثال: ۰۹۱۲۳۴۵۶۷۸۹)."
+            return
+        }
+        phoneValidationError = null
+
+        val hasSmsPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+            activity,
+            Manifest.permission.SEND_SMS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasSmsPerm) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS))
+        }
+
+        focusManager.clearFocus()
+        val standardDigits = if (cleanDigits.startsWith("0")) cleanDigits.removePrefix("0") else cleanDigits
+        val fullPhone = "${selectedCountry.dialCode}$standardDigits"
+        onSendCode(activity, fullPhone)
     }
 
     // Resend countdown timer when code is sent
@@ -288,13 +326,7 @@ fun PhoneAuthScreen(
         floatingActionButton = {
             if (!isCodeSent) {
                 FloatingActionButton(
-                    onClick = {
-                        if (phoneNumber.isNotBlank()) {
-                            focusManager.clearFocus()
-                            val fullPhone = "${selectedCountry.dialCode}${phoneNumber.trim().removePrefix("0")}"
-                            onSendCode(activity, fullPhone)
-                        }
-                    },
+                    onClick = { validateAndSendPhone() },
                     containerColor = TelegramBlue,
                     contentColor = Color.White,
                     modifier = Modifier.testTag("submit_phone_button")
@@ -438,22 +470,27 @@ fun PhoneAuthScreen(
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
-                            onDone = {
-                                focusManager.clearFocus()
-                                if (phoneNumber.isNotBlank()) {
-                                    val fullPhone = "${selectedCountry.dialCode}${phoneNumber.trim().removePrefix("0")}"
-                                    onSendCode(activity, fullPhone)
-                                }
-                            }
+                            onDone = { validateAndSendPhone() }
                         ),
                         modifier = Modifier
                             .weight(1f)
                             .testTag("phone_number_input"),
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = TelegramBlue,
+                            focusedBorderColor = if (phoneValidationError != null) Color.Red else TelegramBlue,
                             cursorColor = TelegramBlue
                         )
+                    )
+                }
+
+                if (phoneValidationError != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = phoneValidationError!!,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
 
@@ -480,9 +517,111 @@ fun PhoneAuthScreen(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 1. Direct Instant Free Sign-in with the entered phone number
+                Button(
+                    onClick = {
+                        val cleanDigits = phoneNumber.trim().replace(" ", "").removePrefix("+98").removePrefix("98")
+                        val isValid = if (selectedCountry.dialCode == "+98") {
+                            (cleanDigits.startsWith("09") && cleanDigits.length == 11) ||
+                            (cleanDigits.startsWith("9") && cleanDigits.length == 10)
+                        } else {
+                            cleanDigits.length >= 7
+                        }
+                        if (!isValid) {
+                            phoneValidationError = "لطفاً ابتدا شماره موبایل معتبر (مثال: ۰۹۱۲۳۴۵۶۷۸۹) را وارد کنید."
+                            return@Button
+                        }
+                        phoneValidationError = null
+                        focusManager.clearFocus()
+                        val standardDigits = if (cleanDigits.startsWith("0")) cleanDigits.removePrefix("0") else cleanDigits
+                        val fullPhone = "${selectedCountry.dialCode}$standardDigits"
+                        onSimulateTestSignIn(fullPhone)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("free_instant_login_button")
+                ) {
+                    Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ورود مستقیم با این شماره (رایگان و بدون پیامک ⚡)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp,
+                        color = Color.White
+                    )
+                }
+
+                // Divider
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = "یا",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                // 2. Google Sign-In (100% Free)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                        .clickable {
+                            onSimulateGoogleSignIn()
+                        }
+                        .testTag("google_login_free_button"),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        GoogleLogo(modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "ورود سریع با حساب گوگل / جیمیل (رایگان)",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Security reassurance note
+                // 3. Optional: Send SMS to SIM card
+                OutlinedButton(
+                    onClick = { validateAndSendPhone() },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("request_carrier_sms_button")
+                ) {
+                    Icon(imageVector = Icons.Default.Sms, contentDescription = null, tint = TelegramBlue, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ارسال کد با پیامک به سیم‌کارت 📩",
+                        fontSize = 13.sp,
+                        color = TelegramBlue
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -501,7 +640,7 @@ fun PhoneAuthScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "ورود به پیام‌رسان نکسا با تایید شماره تلفن همراه انجام می‌شود.",
+                            text = "ورود شما کاملاً رایگان است و هیچ هزینه‌ای برای شما ندارد.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
@@ -682,6 +821,21 @@ fun PhoneAuthScreen(
                                 fontSize = 14.sp
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TextButton(
+                        onClick = {
+                            val phone = (authState as? PhoneAuthState.CodeSent)?.phoneNumber ?: "${selectedCountry.dialCode}$phoneNumber"
+                            onSimulateTestSignIn(phone)
+                        }
+                    ) {
+                        Text(
+                            text = "پیامک دریافت نشد؟ ورود فوری بدون معطلی ⚡",
+                            color = Color(0xFF10B981),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp
+                        )
                     }
                 }
             }

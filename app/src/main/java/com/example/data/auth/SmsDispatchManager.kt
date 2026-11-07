@@ -94,36 +94,14 @@ class SmsDispatchManager(private val context: Context) {
             Log.d(tag, "SEND_SMS permission not granted; delivering via system notification")
         }
 
-        // 2. Deliver official status bar notification from Nexta
-        try {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
-                .setContentTitle("📩 پیامک از طرف: نکستا (Nexta)")
-                .setContentText("کد تایید ورود شما به نکستا: $code")
-                .setSubText("نکستا (Nexta)")
-                .setStyle(
-                    NotificationCompat.BigTextStyle()
-                        .setBigContentTitle("📩 پیامک جدید از طرف: نکستا (Nexta)")
-                        .setSummaryText("نکستا (Nexta)")
-                        .bigText(
-                            "پیامک دریافتی از طرف پیام‌رسان نکستا (Nexta):\n\n" +
-                            "کد ۶ رقمی ورود: $code\n\n" +
-                            "ارسال شده به شماره سیم‌کارت: $phoneNumber\n" +
-                            "کد را در پیام‌رسان نکستا وارد نمایید."
-                        )
-                )
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setAutoCancel(true)
-                .setVibrate(longArrayOf(0, 300, 150, 300))
-                .build()
-
-            notificationManager?.notify(notificationId, notification)
-        } catch (e: Throwable) {
-            Log.e(tag, "Error displaying notification: ${e.message}")
+        // 2. Carrier SMS dispatched without any fake in-app notifications
+        if (carrierSmsDispatched) {
+            Log.d(tag, "Carrier SMS successfully dispatched to $phoneNumber")
+            onSuccess(code)
+        } else {
+            // Permission was not granted or sending failed
+            onError("ارسال پیامک ناموفق بود. لطفاً مطمئن شوید مجوز ارسال پیامک (SMS) را به برنامه داده‌اید و سیم‌کارت شما فعال است.")
         }
-
-        onSuccess(code)
     }
 
     /**
