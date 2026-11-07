@@ -139,7 +139,7 @@ class TelegramViewModel(application: Application) : AndroidViewModel(application
         return if (saved != null) {
             AppLanguage.fromCode(saved)
         } else {
-            AppLanguage.fromSystemLocale()
+            AppLanguage.ENGLISH
         }
     }
 
@@ -252,10 +252,10 @@ class TelegramViewModel(application: Application) : AndroidViewModel(application
 
     fun syncLanguageWithSystemIfNeeded() {
         val saved = appPreferences.getString("app_language_code", null)
-        if (saved == null) {
-            val systemLang = AppLanguage.fromSystemLocale()
-            if (_currentLanguage.value != systemLang) {
-                _currentLanguage.value = systemLang
+        if (saved != null) {
+            val prefLang = AppLanguage.fromCode(saved)
+            if (_currentLanguage.value != prefLang) {
+                _currentLanguage.value = prefLang
             }
         }
     }
@@ -811,6 +811,20 @@ class TelegramViewModel(application: Application) : AndroidViewModel(application
             isGoogleUser = true
         )
         _showAuthScreen.value = false
+    }
+
+    fun sendEmailVerificationCode(email: String) {
+        authManager.startEmailVerification(email)
+    }
+
+    fun resendEmailCode() {
+        authManager.resendEmailVerification()
+    }
+
+    fun signInWithDirectEmail(email: String) {
+        val cleanEmail = email.trim().lowercase()
+        val displayName = cleanEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
+        simulateGoogleSignIn(email = cleanEmail, displayName = displayName)
     }
 
     fun sendPhoneVerificationCode(activity: Activity, phoneNumber: String) {

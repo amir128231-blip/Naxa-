@@ -39,6 +39,9 @@ sealed class PhoneAuthState {
         val verificationId: String,
         val resendToken: PhoneAuthProvider.ForceResendingToken? = null
     ) : PhoneAuthState()
+    data class EmailCodeSent(
+        val email: String
+    ) : PhoneAuthState()
     object VerifyingCode : PhoneAuthState()
     object SigningInWithGoogle : PhoneAuthState()
     data class Authenticated(val user: FirebaseUser?) : PhoneAuthState()
@@ -71,8 +74,9 @@ class FirebaseAuthManager(
     )
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
-    // Real SMS dispatch and verification manager
+    // Real SMS and Email dispatch and verification managers
     val smsDispatchManager = SmsDispatchManager(context)
+    val emailDispatchManager = EmailDispatchManager(context)
 
     // Last verification details for resending
     var currentPhoneNumber: String? = null
@@ -220,7 +224,30 @@ class FirebaseAuthManager(
     }
 
     /**
-     * Strictly verify the 6-digit code received via SMS.
+     * Start Email verification flow with real 6-digit code dispatch.
+     */
+    fun startEmailVerification(email: String) {
+        _authState.value = PhoneAuthState.SendingCode
+        emailDispatchManager.dispatchEmailCode(
+            email = email,
+            onSuccess = { _ ->
+                _authState.value = PhoneAuthState.EmailCodeSent(email.trim().lowercase())
+            },
+            onError = { errorMsg ->
+                _authState.value = PhoneAuthState.Error(errorMsg)
+            }
+        )
+    }
+
+    fun resendEmailVerification() {
+        val email = emailDispatchManager.activeEmail
+        if (email != null) {
+            startEmailVerification(email)
+        }
+    }
+
+    /**
+     * Strictly verify the 6-digit code received via Email or SMS.
      * Entry into the app is strictly forbidden unless the code matches the sent code!
      */
     fun verifyCode(code: String) {
@@ -232,7 +259,24 @@ class FirebaseAuthManager(
 
         _authState.value = PhoneAuthState.VerifyingCode
 
-        // Strict verification: Check against the real code sent to the phone
+        // 1. Strict Email Verification
+        if (emailDispatchManager.activeCode != null) {
+            val (isEmailValid, emailMsg) = emailDispatchManager.verifyEnteredCode(cleanCode)
+            if (isEmailValid) {
+                scope.launch(Dispatchers.Main) {
+                    delay(350)
+                    val email = emailDispatchManager.activeEmail ?: "user@gmail.com"
+                    val displayName = email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                    simulateGoogleSignIn(email = email, displayName = displayName)
+                }
+                return
+            } else {
+                _authState.value = PhoneAuthState.Error(emailMsg)
+                return
+            }
+        }
+
+        // 2. Strict Phone SMS verification
         val (isLocallyValid, localMessage) = smsDispatchManager.verifyEnteredCode(cleanCode)
         if (isLocallyValid) {
             scope.launch(Dispatchers.Main) {
@@ -466,6 +510,8 @@ class FirebaseAuthManager(
         currentPhoneNumber = null
         currentVerificationId = null
         forceResendingToken = null
+        emailDispatchManager.clear()
+        smsDispatchManager.clear()
         _authState.value = PhoneAuthState.Idle
     }
 

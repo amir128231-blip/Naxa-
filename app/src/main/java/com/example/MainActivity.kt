@@ -93,6 +93,9 @@ class MainActivity : ComponentActivity() {
                         val activity = this@MainActivity
                         PhoneAuthScreen(
                             authState = authState,
+                            onSendEmailCode = { email -> viewModel.sendEmailVerificationCode(email) },
+                            onResendEmailCode = { viewModel.resendEmailCode() },
+                            onDirectEmailSignIn = { email -> viewModel.signInWithDirectEmail(email) },
                             onSendCode = { act, phone -> viewModel.sendPhoneVerificationCode(act, phone) },
                             onVerifyCode = { code -> viewModel.verifyPhoneCode(code) },
                             onResendCode = { act -> viewModel.resendPhoneCode(act) },
